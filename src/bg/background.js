@@ -33,7 +33,9 @@ function getAllTabs() {
           .then(function(allTabs) {
             for(let tabs of allTabs) {
               for(let tab of tabs) {
-                all.push(tab);
+                if (!tab.pinned) {
+                  all.push(tab);
+                }
               }
             }
             resolve(all);
@@ -42,6 +44,7 @@ function getAllTabs() {
   });
 }
 
+var wasteTabId = -1;
 function getWorstMemory() {
   getAllTabs()
     .then(function(tabs) {
@@ -67,7 +70,10 @@ function getWorstMemory() {
           }
         }
         chrome.tabs.get(wasteProcess.tabs[0], function(tab) {
+          wasteTabId = tab.id;
           console.log(tab);
+
+          chrome.browserAction.setTitle({title: tab.title});
           chrome.notifications.create({
             title: tab.title,
             type: "basic",
@@ -80,10 +86,18 @@ function getWorstMemory() {
     });
 }
 
+chrome.browserAction.onClicked.addListener(function (tab) {
+  chrome.tabs.update(wasteTabId, {selected: true});
+  getWorstMemory();
+});
+
 (function() {
   chrome.alarms.onAlarm.addListener(function(alarm) {
     getWorstMemory();
   });
 
-  chrome.alarms.create("check", {"periodInMinutes":0.5});
+  chrome.alarms.create("check", {"periodInMinutes":5});
 })();
+
+getWorstMemory();
+

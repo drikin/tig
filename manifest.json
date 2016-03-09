@@ -23,6 +23,7 @@
   },
   "permissions" : [
     "processes",
-    "tabs"
+    "tabs",
+    "alarms"
   ]
 }

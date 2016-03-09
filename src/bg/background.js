@@ -42,32 +42,48 @@ function getAllTabs() {
   });
 }
 
-getAllTabs()
-  .then(function(tabs) {
-    let allProcessIds = [];
-    promisedProcessIds = tabs.map(getProcessIdForTab);
-    Promise.all(promisedProcessIds)
-      .then(function(processIds) {
-        for(let processId of processIds) {
-          allProcessIds.push(processId);
+function getWorstMemory() {
+  getAllTabs()
+    .then(function(tabs) {
+      let allProcessIds = [];
+      promisedProcessIds = tabs.map(getProcessIdForTab);
+      Promise.all(promisedProcessIds)
+        .then(function(processIds) {
+          for(let processId of processIds) {
+            allProcessIds.push(processId);
+          }
+        });
+      chrome.processes.getProcessInfo(allProcessIds, true, function(processes) {
+        let wasteMemory = 0;
+        let wasteProcess = null;
+        for(let id of allProcessIds) {
+          let process = processes[id];
+          if (typeof process !== "undefined") {
+            let m = process.privateMemory;
+            if (m > wasteMemory) {
+              wasteMemory = m;
+              wasteProcess = process;
+            }
+          }
         }
+        chrome.tabs.get(wasteProcess.tabs[0], function(tab) {
+          console.log(tab);
+          chrome.notifications.create({
+            title: tab.title,
+            type: "basic",
+            message:"hoge",
+            iconUrl:"icons/icon128.png",
+            isClickable: true
+          });
+        });
       });
-    chrome.processes.getProcessInfo(allProcessIds, true, function(processes) {
-      // if (typeof processes[processId].privateMemory !== "undefined") {
-      //   var memoryUsage = processes[processId].privateMemory/1024/1024;
-      //   console.log(tab.title, memoryUsage);
-      for(let id of allProcessIds) {
-        let process = processes[id];
-        if (typeof process !== "undefined") {
-          console.log(process.title, process.privateMemory);
-        }
-      }
     });
-  });
-
-var timer = chrome.alarms.create("timer", {periodInMinutes:1});
-  console.log(timer);
-timer.onAlarm = function(alarm) {
-  getAllTabs();
 }
 
+(function() {
+  chrome.alarms.onAlarm.addListener(function(alarm) {
+    getWorstMemory();
+  });
+
+  chrome.alarms.create("check", {"periodInMinutes":0.5});
+})();

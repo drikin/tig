@@ -71,7 +71,7 @@ function getWorstMemory() {
           chrome.notifications.create({
             title: tab.title,
             type: "basic",
-            message:"hoge",
+            message: parseInt(wasteMemory/1024/1024) + "MB used",
             iconUrl:"icons/icon128.png",
             isClickable: true
           });

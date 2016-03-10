@@ -103,6 +103,7 @@ function setWasteProcessNotification(process) {
 chrome.browserAction.onClicked.addListener(function(tab) {
   getWorstMemoryProcess()
     .then(function(process) {
+      setWasteProcessNotification(process);
       chrome.tabs.get(process.tabs[0], function(tab) {
         chrome.tabs.update(tab.id, {selected: true});
       });
@@ -111,13 +112,13 @@ chrome.browserAction.onClicked.addListener(function(tab) {
 
 // init
 (function() {
+  // install Timer
   chrome.alarms.onAlarm.addListener(function(alarm) {
     getWorstMemoryProcess()
       .then(function(process) {
         setWasteProcessNotification(process);
       });
   });
-
   chrome.alarms.create("check", {"periodInMinutes":10});
 
   getWorstMemoryProcess()

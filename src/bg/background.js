@@ -1,4 +1,4 @@
-function getAll() {
+function getAllWindows() {
   return new Promise(function(resolve) {
     chrome.windows.getAll({windowTypes: ['normal']}, function (windows) {
       resolve(windows);
@@ -6,7 +6,7 @@ function getAll() {
   });
 }
 
-function getAllInWindow(win) {
+function getAllTabsInWindow(win) {
   return new Promise(function(resolve) {
     chrome.tabs.getAllInWindow(win.id, function(tabs) {
       resolve(tabs);
@@ -22,13 +22,21 @@ function getProcessIdForTab(tab) {
   });
 }
 
+function getProcessInfo(processIds) {
+  return new Promise(function(resolve) {
+    chrome.processes.getProcessInfo(processIds, true, function(processes) {
+      resolve(processes);
+    });
+  });
+}
+
 function getAllTabs() {
   return new Promise(function(resolve, reject) {
     let all = [];
 
-    getAll()
+    getAllWindows()
       .then(function(wins) {
-        promisedTabs = wins.map(getAllInWindow);
+        promisedTabs = wins.map(getAllTabsInWindow);
         Promise.all(promisedTabs)
           .then(function(allTabs) {
             for(let tabs of allTabs) {
@@ -44,60 +52,77 @@ function getAllTabs() {
   });
 }
 
-var wasteTabId = -1;
-function getWorstMemory() {
-  getAllTabs()
-    .then(function(tabs) {
-      let allProcessIds = [];
-      promisedProcessIds = tabs.map(getProcessIdForTab);
-      Promise.all(promisedProcessIds)
-        .then(function(processIds) {
-          for(let processId of processIds) {
-            allProcessIds.push(processId);
-          }
-        });
-      chrome.processes.getProcessInfo(allProcessIds, true, function(processes) {
-        let wasteMemory = 0;
-        let wasteProcess = null;
-        for(let id of allProcessIds) {
-          let process = processes[id];
-          if (typeof process !== "undefined") {
-            let m = process.privateMemory;
-            if (m > wasteMemory) {
-              wasteMemory = m;
-              wasteProcess = process;
+function getWorstMemoryProcess() {
+  return new Promise(function(resolve) {
+    getAllTabs()
+      .then(function(tabs) {
+        promisedProcessIds = tabs.map(getProcessIdForTab);
+        Promise.all(promisedProcessIds)
+          .then(function(processIds) {
+            let allProcessIds = [];
+            for(let processId of processIds) {
+              allProcessIds.push(processId);
             }
-          }
-        }
-        chrome.tabs.get(wasteProcess.tabs[0], function(tab) {
-          wasteTabId = tab.id;
-          console.log(tab);
-
-          chrome.browserAction.setTitle({title: tab.title});
-          chrome.notifications.create({
-            title: tab.title,
-            type: "basic",
-            message: parseInt(wasteMemory/1024/1024) + "MB used",
-            iconUrl:"icons/icon128.png",
-            isClickable: true
+            return allProcessIds;
+          })
+          .then(function(allProcessIds) {
+            getProcessInfo(allProcessIds)
+              .then(function(processes) {
+                let wasteMemory = 0;
+                let wasteProcess = null;
+                for(let id of allProcessIds) {
+                  let process = processes[id];
+                  if (typeof process !== "undefined") {
+                    let m = process.privateMemory;
+                    if (m > wasteMemory) {
+                      wasteMemory = m;
+                      wasteProcess = process;
+                    }
+                  }
+                }
+                resolve(wasteProcess);
+              });
           });
-        });
       });
-    });
+  });
 }
 
-chrome.browserAction.onClicked.addListener(function (tab) {
-  chrome.tabs.update(wasteTabId, {selected: true});
-  getWorstMemory();
+function setWasteProcessNotification(process) {
+  chrome.tabs.get(process.tabs[0], function(tab) {
+    chrome.browserAction.setTitle({title: tab.title});
+    chrome.notifications.create({
+      title: tab.title,
+      type: "basic",
+      message: parseInt(process.privateMemory/1024/1024) + "MB used",
+      iconUrl:"icons/icon128.png",
+      isClickable: true
+    });
+  });
+}
+
+chrome.browserAction.onClicked.addListener(function(tab) {
+  getWorstMemoryProcess()
+    .then(function(process) {
+      chrome.tabs.get(process.tabs[0], function(tab) {
+        chrome.tabs.update(tab.id, {selected: true});
+      });
+    });
 });
 
+// init
 (function() {
   chrome.alarms.onAlarm.addListener(function(alarm) {
-    getWorstMemory();
+    getWorstMemoryProcess()
+      .then(function(process) {
+        setWasteProcessNotification(process);
+      });
   });
 
-  chrome.alarms.create("check", {"periodInMinutes":5});
-})();
+  chrome.alarms.create("check", {"periodInMinutes":10});
 
-getWorstMemory();
+  getWorstMemoryProcess()
+    .then(function(process) {
+      setWasteProcessNotification(process);
+    });
+})();
 
